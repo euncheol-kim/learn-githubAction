@@ -3,7 +3,7 @@ name: PURE_GRADLE_CI
 on:
   pull_request:
     branches:
-      - "pure-gradle-ci-cd"
+      - "pure-gradle"
 
 jobs:
   build:
