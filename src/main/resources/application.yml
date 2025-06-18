@@ -6,5 +6,7 @@ spring:
     group:
       local-docker:
         - local-docker
+      test:
+        - test
 
     default: local
