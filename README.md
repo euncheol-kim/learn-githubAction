@@ -1,3 +1,3 @@
 # learn-githubAction
 
-githubAction 학습 저장소입니다.
+githubAction 학습 저장소입니다..
