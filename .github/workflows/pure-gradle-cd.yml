@@ -1,32 +1,130 @@
-name: PURE_GRADLE_CD
+name: CD
 
 on:
   workflow_run:
-    workflows: ["PURE_GRADLE_CI"]
+    workflows: ["CI"]
     types:
       - completed
+    branches: [main, develop]
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
 
 jobs:
-  deploy:
+  deploy-staging:
     runs-on: ubuntu-latest
-    permissions:
-      actions: read
-      contents: read
+    if: ${{ github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_branch == 'develop' }}
+    environment: staging
 
-    if: ${{ github.event.workflow_run.conclusion == 'success' }}
-    
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Download artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: learn-githubAction-jar
-          path: deploy # 아티팩트를 다운로드할 경로
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          run-id: ${{ github.event.workflow_run.id }}
-
-      - name: Deploy
+      - name: Set environment variables
         run: |
-          echo "Deploying the application..."
+          echo "ENV_NAME=staging" >> $GITHUB_ENV
+          echo "IMAGE_TAG=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:develop" >> $GITHUB_ENV
+
+      - name: Deploy to staging
+        uses: appleboy/ssh-action@v1.0.0
+        with:
+          host: ${{ secrets.STAGING_HOST }}
+          username: ${{ secrets.STAGING_USER }}
+          key: ${{ secrets.STAGING_SSH_KEY }}
+          port: ${{ secrets.STAGING_PORT }}
+          script: |
+            cd /opt/myapp
+            
+            # GitHub Container Registry 로그인
+            echo ${{ secrets.GITHUB_TOKEN }} | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+            
+            # 환경 변수 설정
+            export IMAGE_TAG=${{ env.IMAGE_TAG }}
+            export SPRING_PROFILES_ACTIVE=staging
+            export DATABASE_URL=${{ secrets.STAGING_DATABASE_URL }}
+            export REDIS_URL=${{ secrets.STAGING_REDIS_URL }}
+            
+            # Docker Compose로 배포
+            docker-compose -f docker-compose.staging.yml pull
+            docker-compose -f docker-compose.staging.yml up -d
+            
+            # 헬스체크
+            sleep 30
+            curl -f http://localhost:8080/actuator/health || exit 1
+            
+            # 이전 이미지 정리
+            docker system prune -f
+
+  deploy-production:
+    runs-on: ubuntu-latest
+    if: ${{ github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_branch == 'main' }}
+    environment: production
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set environment variables
+        run: |
+          echo "ENV_NAME=production" >> $GITHUB_ENV
+          echo "IMAGE_TAG=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest" >> $GITHUB_ENV
+
+      - name: Deploy to production
+        uses: appleboy/ssh-action@v1.0.0
+        with:
+          host: ${{ secrets.PRODUCTION_HOST }}
+          username: ${{ secrets.PRODUCTION_USER }}
+          key: ${{ secrets.PRODUCTION_SSH_KEY }}
+          port: ${{ secrets.PRODUCTION_PORT }}
+          script: |
+            cd /opt/myapp
+            
+            # GitHub Container Registry 로그인
+            echo ${{ secrets.GITHUB_TOKEN }} | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+            
+            # 환경 변수 설정
+            export IMAGE_TAG=${{ env.IMAGE_TAG }}
+            export SPRING_PROFILES_ACTIVE=production
+            export DATABASE_URL=${{ secrets.PRODUCTION_DATABASE_URL }}
+            export REDIS_URL=${{ secrets.PRODUCTION_REDIS_URL }}
+            
+            # 롤링 업데이트를 위한 블루-그린 배포
+            docker-compose -f docker-compose.production.yml pull
+            
+            # 현재 실행 중인 컨테이너 확인
+            if docker-compose -f docker-compose.production.yml ps | grep -q "Up"; then
+              # 새로운 인스턴스 시작
+              docker-compose -f docker-compose.production.yml up -d --scale app=2 --no-recreate
+              sleep 30
+            
+              # 헬스체크
+              curl -f http://localhost:8080/actuator/health || exit 1
+            
+              # 기존 인스턴스 종료
+              docker-compose -f docker-compose.production.yml up -d --scale app=1 --remove-orphans
+            else
+              # 첫 배포인 경우
+              docker-compose -f docker-compose.production.yml up -d
+            fi
+            
+            # 헬스체크
+            sleep 30
+            curl -f http://localhost:8080/actuator/health || exit 1
+            
+            # 이전 이미지 정리
+            docker system prune -f
+
+  notify:
+    runs-on: ubuntu-latest
+    needs: [deploy-staging, deploy-production]
+    if: always()
+
+    steps:
+      - name: Notify Slack
+        uses: 8398a7/action-slack@v3
+        with:
+          status: ${{ job.status }}
+          channel: '#deployments'
+          webhook_url: ${{ secrets.SLACK_WEBHOOK }}
+          fields: repo,message,commit,author,action,eventName,ref,workflow,job,took
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK }}
