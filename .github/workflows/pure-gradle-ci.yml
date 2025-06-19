@@ -103,6 +103,11 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+          outputs: type=registry,push=true,dangling=false  # 중간 이미지 푸시 방지
+
+      - name: Clean up intermediate images
+        run: |
+          docker image prune -f
 
 #  security-scan:
 #    needs: build-and-push
