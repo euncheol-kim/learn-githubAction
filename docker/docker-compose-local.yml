@@ -23,7 +23,7 @@ services:
   core-server:
     build:
       context: ..
-      dockerfile: ./docker/Dockerfile.common
+      dockerfile: ./docker/Dockerfile.core-server.common
     container_name: ${CORE_SERVER_CONTAINER_NAME}
     image: ${CORE_SERVER_IMAGE_NAME}:${CORE_SERVER_IMAGE_VERSION:-latest}
     environment:
