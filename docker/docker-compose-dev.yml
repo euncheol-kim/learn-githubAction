@@ -1,0 +1,49 @@
+name: ${CONTAINER_NAME}
+
+services:
+  core-mysql:
+    image: mysql:8.0
+    container_name: ${CORE_MYSQL_CONTAINER_NAME}
+    environment:
+      MYSQL_ROOT_PASSWORD: ${CORE_MYSQL_ROOT_PASSWORD}
+      MYSQL_DATABASE: ${CORE_MYSQL_DATABASE}
+      MYSQL_USER: ${CORE_MYSQL_USER}
+      MYSQL_PASSWORD: ${CORE_MYSQL_PASSWORD}
+    ports:
+      - ${CORE_MYSQL_PORTS}
+    volumes:
+      - ${CORE_MYSQL_VOLUMES}
+    networks:
+      - local-network
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      timeout: 20s
+      retries: 10
+
+  core-server:
+    build:
+      context: ..
+      dockerfile: Dockerfile.core-server.common
+    container_name: ${CORE_SERVER_CONTAINER_NAME}
+    image: ${CORE_SERVER_IMAGE_NAME}:${CORE_SERVER_IMAGE_VERSION:-latest}
+    environment:
+      SPRING_PROFILES_ACTIVE: ${CORE_SERVER_SPRING_PROFILES_ACTIVE}
+      SPRING_DATASOURCE_URL: ${CORE_SERVER_SPRING_DATASOURCE_URL}
+      SPRING_DATASOURCE_USERNAME: ${CORE_SERVER_SPRING_DATASOURCE_USERNAME}
+      SPRING_DATASOURCE_PASSWORD: ${CORE_SERVER_SPRING_DATASOURCE_PASSWORD}
+    ports:
+      - ${CORE_SERVER_PORT}
+    depends_on:
+      core-mysql:
+        condition: service_healthy
+    networks:
+      - local-network
+
+# 볼륨 정의 (데이터 영속성을 위해)
+volumes:
+  mysql_data:
+
+# 네트워크 정의
+networks:
+  local-network:
+    driver: bridge

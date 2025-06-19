@@ -42,7 +42,6 @@ jobs:
             export IMAGE_TAG=${{ env.IMAGE_TAG }}
             export SPRING_PROFILES_ACTIVE=staging
             export DATABASE_URL=${{ secrets.STAGING_DATABASE_URL }}
-            export REDIS_URL=${{ secrets.STAGING_REDIS_URL }}
             
             # Docker Compose로 배포
             docker-compose -f docker-compose.staging.yml pull

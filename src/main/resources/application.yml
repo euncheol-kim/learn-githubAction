@@ -6,5 +6,7 @@ spring:
     group:
       local-docker:
         - local-docker
+      dev-docker:
+        - dev-docker
 
     default: local
